@@ -47,6 +47,30 @@
   <xsl:param name="var" as="xs:string" required="yes" />
   <xsl:param name="type" as="xs:string" select="'variable'" />
   <xsl:choose>
+    <xsl:when test="@error">
+      <variable name="{$var}-doc" as="document-node()">
+        <document>
+          <xsl:element name="error">
+            <xsl:if test="@error">
+              <xsl:attribute name="code" select="@error"/>
+            </xsl:if>
+            <xsl:if test="@errMessage">
+              <xsl:attribute name="errMessage" select="@errMessage"/>
+            </xsl:if>
+          </xsl:element>
+        </document>
+      </variable>
+      <xsl:element name="xsl:{$type}">
+        <xsl:copy-of select="@as"/>
+        <xsl:attribute name="name" select="$var" />
+        <xsl:attribute name="select"
+          select="if (@select) 
+          then concat('$', $var, '-doc/(', @select, ')')
+          else if (@href)
+          then concat('$', $var, '-doc')
+          else concat('$', $var, '-doc/node()')" />
+      </xsl:element>
+    </xsl:when>
     <xsl:when test="node() or @href">
       <variable name="{$var}-doc" as="document-node()">
         <xsl:choose>

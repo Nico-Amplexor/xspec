@@ -16,7 +16,8 @@
   xmlns:x="http://www.jenitennison.com/xslt/xspec"
   xmlns:__x="http://www.w3.org/1999/XSL/TransformAliasAlias"
   xmlns:pkg="http://expath.org/ns/pkg"
-  xmlns:impl="urn:x-xspec:compile:xslt:impl">
+  xmlns:impl="urn:x-xspec:compile:xslt:impl"
+  xmlns:err="http://www.w3.org/2005/xqt-errors">
 
 <xsl:import href="generate-common-tests.xsl"/>
 <xsl:import href="generate-tests-helper.xsl" />
@@ -38,6 +39,9 @@
 
 <xsl:variable name="stylesheet" as="document-node()" 
   select="doc($stylesheet-uri)" />
+
+<xsl:variable name="xslt-version" as="xs:decimal" 
+  select="(*[1]/@xslt-version, 2.0)[1]" />
 
 <xsl:template match="/">
    <xsl:call-template name="x:generate-tests"/>
@@ -165,6 +169,13 @@
       <xsl:text>": there are tests in this scenario but no call, or apply or context has been given</xsl:text>
     </xsl:message>
   </xsl:if>
+  <xsl:if test="x:expect/@error and $xslt-version &lt; 3.0">
+    <xsl:message terminate="yes">
+      <xsl:text>ERROR in scenario "</xsl:text>
+      <xsl:value-of select="x:label(.)" />
+      <xsl:text>": error testing is only available in XSLT 3.0 (you currently use </xsl:text><xsl:value-of select="$xslt-version"/>
+    </xsl:message>
+  </xsl:if>
   <template name="x:{generate-id()}">
      <xsl:for-each select="$params">
         <param name="{ @name }" required="yes"/>
@@ -219,6 +230,34 @@
                   <xsl:copy-of select="$template-call" />
                 </xsl:otherwise>
               </xsl:choose>
+            </xsl:when>
+            <xsl:when test="$call/@function and $xslt-version &gt;= 3.0 and x:expect/@error">              
+              <!-- Set up variables containing the parameter values -->
+              <xsl:apply-templates select="$call/x:param[1]" mode="x:compile" />
+              <!-- Create the function call -->
+              <try>
+                <xsl:element name="result">
+                  <sequence>
+                    <xsl:attribute name="select">
+                      <xsl:value-of select="$call/@function" />
+                      <xsl:text>(</xsl:text>
+                      <xsl:for-each select="$call/x:param">
+                        <xsl:sort select="xs:integer(@position)" />
+                        <xsl:text>$</xsl:text>
+                        <xsl:value-of select="if (@name) then @name else generate-id()" />
+                        <xsl:if test="position() != last()">, </xsl:if>
+                      </xsl:for-each>
+                      <xsl:text>)</xsl:text>
+                    </xsl:attribute>
+                  </sequence>
+                </xsl:element>  
+                <catch>
+                  <xsl:element name="error">
+                    <xsl:attribute name="code">{$err:code}</xsl:attribute>
+                    <xsl:attribute name="description">{$err:description}</xsl:attribute>
+                  </xsl:element>
+                </catch>
+              </try>
             </xsl:when>
             <xsl:when test="$call/@function">
               <!-- Set up variables containing the parameter values -->
@@ -306,12 +345,16 @@
       </xsl:if>
       <xsl:value-of select="normalize-space(x:label(.))"/>
     </message>
-    <xsl:if test="not($pending-p)">
-      <xsl:variable name="xslt-version" as="xs:decimal" 
-        select="(ancestor-or-self::*[@xslt-version]/@xslt-version, 2.0)[1]" />
+    <xsl:if test="not($pending-p)">     
       <!-- Set up the $impl:expected variable -->
       <xsl:apply-templates select="." mode="x:setup-expected" />
       <xsl:choose>
+        <xsl:when test="@error">
+          <!--<variable name="impl:successful" as="xs:boolean" 
+            select="boolean($x:result/@code = $impl:expected/@code)" />-->
+          <variable name="impl:successful" as="xs:boolean" 
+            select="test:deep-equal($impl:expected, $x:result, {$xslt-version})" />
+        </xsl:when>
         <xsl:when test="@test">
           <!-- This variable declaration could be moved from here (the
                template generated from x:expect) to the template
