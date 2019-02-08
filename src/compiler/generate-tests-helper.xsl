@@ -47,16 +47,11 @@
   <xsl:param name="var" as="xs:string" required="yes" />
   <xsl:param name="type" as="xs:string" select="'variable'" />
   <xsl:choose>
-    <xsl:when test="@error">
+    <xsl:when test="@errorCode or @errorDescr">
       <variable name="{$var}-doc" as="document-node()">
         <document>
           <xsl:element name="error">
-            <xsl:if test="@error">
-              <xsl:attribute name="code" select="@error"/>
-            </xsl:if>
-            <xsl:if test="@errMessage">
-              <xsl:attribute name="errMessage" select="@errMessage"/>
-            </xsl:if>
+            <xsl:copy-of select="@* except @label"/>
           </xsl:element>
         </document>
       </variable>

@@ -169,11 +169,11 @@
       <xsl:text>": there are tests in this scenario but no call, or apply or context has been given</xsl:text>
     </xsl:message>
   </xsl:if>
-  <xsl:if test="x:expect/@error and $xslt-version &lt; 3.0">
+  <xsl:if test="(x:expect/@errorCode or x:expect/@errorDescr) and $xslt-version &lt; 3.0">
     <xsl:message terminate="yes">
       <xsl:text>ERROR in scenario "</xsl:text>
       <xsl:value-of select="x:label(.)" />
-      <xsl:text>": error testing is only available in XSLT 3.0 (you currently use </xsl:text><xsl:value-of select="$xslt-version"/>
+      <xsl:text>": error testing is only available in XSLT 3.0</xsl:text>
     </xsl:message>
   </xsl:if>
   <template name="x:{generate-id()}">
@@ -231,10 +231,10 @@
                 </xsl:otherwise>
               </xsl:choose>
             </xsl:when>
-            <xsl:when test="$call/@function and $xslt-version &gt;= 3.0 and x:expect/@error">              
+            <xsl:when test="$call/@function and (x:expect/@errorCode or x:expect/@errorDescr)">              
               <!-- Set up variables containing the parameter values -->
               <xsl:apply-templates select="$call/x:param[1]" mode="x:compile" />
-              <!-- Create the function call -->
+              <!-- Create the function call in a try catch -->
               <try>
                 <xsl:element name="result">
                   <sequence>
@@ -253,8 +253,8 @@
                 </xsl:element>  
                 <catch>
                   <xsl:element name="error">
-                    <xsl:attribute name="code">{$err:code}</xsl:attribute>
-                    <xsl:attribute name="description">{$err:description}</xsl:attribute>
+                    <xsl:attribute name="errorCode">{$err:code}</xsl:attribute>
+                    <xsl:attribute name="errorDescr">{$err:description}</xsl:attribute>
                   </xsl:element>
                 </catch>
               </try>
@@ -349,11 +349,36 @@
       <!-- Set up the $impl:expected variable -->
       <xsl:apply-templates select="." mode="x:setup-expected" />
       <xsl:choose>
-        <xsl:when test="@error">
-          <!--<variable name="impl:successful" as="xs:boolean" 
-            select="boolean($x:result/@code = $impl:expected/@code)" />-->
-          <variable name="impl:successful" as="xs:boolean" 
-            select="test:deep-equal($impl:expected, $x:result, {$xslt-version})" />
+        <xsl:when test="@errorCode or @errorDescr">
+          <variable name="impl:successful-error" as="xs:boolean">
+            <choose>
+              <when test="$impl:expected/@errorCode eq '*'"><!-- matches any error code -->
+                <value-of select="exists($x:result/@errorCode)"/>  
+              </when>
+              <when test="matches($impl:expected/@errorCode,'(^[^:]*:)\*$')"><!-- matches any error code of specific namespace -->
+                <value-of select="boolean(tokenize($x:result/@errorCode,':')[1] eq tokenize($impl:expected/@errorCode,':')[1])"/>  
+              </when>
+              <otherwise><!-- matches exact error code -->
+                <value-of select="boolean($x:result/@errorCode eq $impl:expected/@errorCode)"/>   
+              </otherwise>
+            </choose>
+          </variable>
+          <variable name="impl:successful-errorMessage" as="xs:boolean">
+            <value-of select="boolean($x:result/@errorDescr eq $impl:expected/@errorDescr)"/>   
+          </variable>          
+          <variable name="impl:successful" as="xs:boolean">
+            <choose>
+              <when test="$impl:expected/@errorCode and $impl:expected/@errorDescr">
+                <value-of select="boolean($impl:successful-error and $impl:successful-errorMessage)"/>
+              </when>
+              <when test="$impl:expected/@errorCode">
+                <value-of select="$impl:successful-error"/>
+              </when>
+              <when test="$impl:expected/@errorDescr">
+                <value-of select="$impl:successful-errorMessage"/>
+              </when>
+            </choose>
+          </variable> 
         </xsl:when>
         <xsl:when test="@test">
           <!-- This variable declaration could be moved from here (the
